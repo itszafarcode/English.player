@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Плеер</title>
+<style>
+:root{
+  color-scheme: light;
+  --bg:#f3f5f8; --surface:#ffffff; --text:#171b24; --muted:#5d6678; --line:#d8dde6;
+  --accent:#0e7c86; --accent-text:#ffffff;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#11151d; --surface:#1b212d; --text:#e8ebf2; --muted:#98a2b6; --line:#2b3342;
+    --accent:#4fc1c9; --accent-text:#08262a;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#11151d; --surface:#1b212d; --text:#e8ebf2; --muted:#98a2b6; --line:#2b3342;
+  --accent:#4fc1c9; --accent-text:#08262a;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  line-height:1.5; min-height:100vh;
+}
+main{max-width:860px; margin:0 auto; padding:16px}
+h1{font-size:1.25rem; margin:4px 0 16px; font-weight:650}
+.stage{
+  background:#000; border-radius:12px; overflow:hidden;
+  aspect-ratio:16/9; display:none; position:relative;
+}
+.stage:fullscreen{aspect-ratio:auto; border-radius:0; width:100%; height:100%}
+.fs{position:absolute; top:8px; right:8px; width:40px; height:40px; border:0; border-radius:10px; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; cursor:pointer}
+.fs:focus-visible{outline:3px solid var(--accent); outline-offset:2px}
+.stage.on{display:block}
+video{width:100%; height:100%; display:block; background:#000}
+.empty{
+  background:var(--surface); border:1.5px dashed var(--line); border-radius:12px;
+  padding:40px 20px; text-align:center;
+}
+.empty p{margin:0 0 18px; color:var(--muted)}
+.btn{
+  font:inherit; font-weight:600; border:0; border-radius:10px; padding:12px 20px;
+  background:var(--accent); color:var(--accent-text); cursor:pointer;
+}
+.btn.ghost{background:transparent; color:var(--text); border:1px solid var(--line)}
+.btn:focus-visible,.speed button:focus-visible{outline:3px solid var(--accent); outline-offset:2px}
+.bar{display:none; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px}
+.bar.on{display:flex}
+.speed{display:flex; gap:6px}
+.speed button{
+  font:inherit; font-size:.9rem; padding:8px 12px; border-radius:8px; cursor:pointer;
+  border:1px solid var(--line); background:var(--surface); color:var(--text);
+}
+.speed button[aria-pressed="true"]{background:var(--accent); color:var(--accent-text); border-color:var(--accent)}
+.name{flex:1 1 100%; color:var(--muted); font-size:.9rem; overflow-wrap:anywhere}
+.err{color:#c0392b; margin-top:12px; display:none}
+.err.on{display:block}
+.sub{position:absolute; left:0; right:0; bottom:16%; padding:0 8px; text-align:center; pointer-events:none}
+.sub .txt{display:inline-block; max-width:94%; background:rgba(0,0,0,.62); color:#fff; padding:4px 10px; border-radius:6px; font-size:clamp(14px,4.2vw,22px); line-height:1.35; white-space:pre-line; overflow-wrap:anywhere; text-shadow:0 1px 2px rgba(0,0,0,.8)}
+.sub .txt:empty{display:none}
+.stage:fullscreen .sub .txt{font-size:clamp(18px,3.4vw,36px)}
+.sub.off .txt{visibility:hidden}
+.sync{display:flex; gap:6px; align-items:center; color:var(--muted); font-size:.9rem}
+.sync button{font:inherit; font-size:.9rem; padding:8px 12px; border-radius:8px; cursor:pointer; border:1px solid var(--line); background:var(--surface); color:var(--text)}
+.sync button:focus-visible{outline:3px solid var(--accent); outline-offset:2px}
+.suberr{color:#c0392b; margin-top:12px; display:none}
+.suberr.on{display:block}
+.set{margin-top:20px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 16px}
+.set summary{cursor:pointer; font-weight:600}
+.set label{display:block; margin-top:12px; font-size:.9rem; color:var(--muted)}
+.set input[type=password],.set input[type=text]{width:100%; font:inherit; padding:10px 12px; margin-top:4px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text)}
+.set .row{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
+.set .msg{margin-top:12px; font-size:.9rem; overflow-wrap:anywhere}
+.set .msg.bad{color:#c0392b}
+.set .hint{margin-top:10px; font-size:.85rem; color:var(--muted)}
+.sub .w{pointer-events:auto; cursor:pointer; border-radius:3px}
+.sub .w:active{background:rgba(255,255,255,.28)}
+.card{position:fixed; left:0; right:0; bottom:0; margin:0 auto; width:min(100%,560px); max-height:65vh; overflow:auto; background:var(--surface); color:var(--text); border:1px solid var(--line); border-radius:16px 16px 0 0; padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px)); z-index:5}
+.card[hidden]{display:none}
+.cw{font-size:1.5rem; font-weight:700}
+.ct{font-size:1.2rem; color:var(--accent); margin-top:2px}
+.ce,.cs,.cx{margin-top:10px}
+.cs{color:var(--muted); font-size:.9rem}
+.cx{white-space:pre-line}
+.cb{display:flex; gap:8px; flex-wrap:wrap; margin-top:14px}
+.btn:disabled{opacity:.6}
+.wi{display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-top:1px solid var(--line)}
+.word-detail{flex:1; min-width:0}
+.word-detail summary{cursor:pointer; font-weight:650; overflow-wrap:anywhere}
+.word-detail p{margin:8px 0 0; font-size:.92rem; white-space:pre-wrap; overflow-wrap:anywhere}
+.word-detail p strong{color:var(--muted); font-weight:600}
+.wi button{flex:0 0 auto; font:inherit; font-size:.85rem; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); cursor:pointer}
+.set select{width:100%; font:inherit; padding:10px 12px; margin-top:4px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text)}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>Плеер</h1>
+
+  <div class="empty" id="empty">
+    <p>Выбери видео из памяти телефона. Оно не загружается в интернет.</p>
+    <button class="btn" id="pick">Выбрать видео</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <video id="v" controls controlslist="nofullscreen" playsinline></video>
+    <div class="sub" id="sub"><span class="txt" id="subtxt"></span></div>
+    <button class="fs" id="fs" aria-label="На весь экран"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    <div class="card" id="card" hidden>
+      <div class="cw" id="cw"></div>
+      <div class="ct" id="ct"></div>
+      <div class="ce" id="ce"></div>
+      <div class="cs" id="cs"></div>
+      <div class="cx" id="cx"></div>
+      <div class="cb">
+        <button class="btn" id="csave">Сохранить слово</button>
+        <button class="btn ghost" id="cclose">Продолжить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="suberr" id="suberr"></div>
+
+  <div class="bar" id="bar">
+    <div class="speed" id="speed" role="group" aria-label="Скорость">
+      <button data-r="0.75" aria-pressed="false">0.75x</button>
+      <button data-r="1" aria-pressed="true">1x</button>
+      <button data-r="1.25" aria-pressed="false">1.25x</button>
+    </div>
+    <button class="btn ghost" id="other">Другое видео</button>
+    <button class="btn ghost" id="subbtn">Субтитры</button>
+    <div class="sync" role="group" aria-label="Сдвиг субтитров">
+      <button id="earlier">Раньше</button>
+      <span id="off">0 с</span>
+      <button id="later">Позже</button>
+    </div>
+    <button class="btn ghost" id="hide">Скрыть</button>
+    <div class="name" id="name"></div>
+  </div>
+
+  <div class="err" id="err">Не получилось открыть этот файл. Попробуй видео в формате MP4.</div>
+  <details class="set" id="wl">
+    <summary id="wlsum">Мои слова (0)</summary>
+    <div id="wlist"></div>
+  </details>
+  <details class="set" id="set">
+    <summary>Настройки перевода (ИИ)</summary>
+    <label for="prov">Какой ИИ использовать</label>
+    <select id="prov"><option value="openai">GPT / OpenAI (платно)</option><option value="gemini">Gemini (бесплатно)</option><option value="claude">Claude (платно, очень дёшево)</option></select>
+    <label for="okey">Ключ OpenAI (хранится только в этом браузере)</label>
+    <input type="password" id="okey" autocomplete="off" placeholder="Ключ из platform.openai.com (sk-...)">
+    <label for="omodel">Модель OpenAI</label>
+    <input type="text" id="omodel" autocomplete="off">
+    <label for="key">Ключ Gemini (хранится только в этом браузере)</label>
+    <input type="password" id="key" autocomplete="off" placeholder="Вставь ключ из Google AI Studio">
+    <label for="model">Модель</label>
+    <input type="text" id="model" autocomplete="off">
+    <label for="ckey">Ключ Claude API (хранится только в этом браузере)</label>
+    <input type="password" id="ckey" autocomplete="off" placeholder="Ключ из platform.claude.com">
+    <label for="cmodel">Модель Claude</label>
+    <input type="text" id="cmodel" autocomplete="off">
+    <div class="row">
+      <button class="btn" id="keysave">Сохранить</button>
+      <button class="btn ghost" id="keytest">Проверить связь</button>
+    </div>
+    <div class="msg" id="keymsg"></div>
+    <div class="hint">Ключ создаётся бесплатно в Google AI Studio. Никому его не показывай. Если модель отвечает ошибкой, замени её название в этом поле.</div>
+  </details>
+  <input type="file" id="file" accept="video/*">
+  <input type="file" id="subfile">
+</main>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var file=$('file'), v=$('v'), url=null, rate=1;
+  var shouldResumeAfterUi=false, appPausePending=false;
+
+  function pick(){file.click()}
+  $('pick').addEventListener('click',pick);
+  $('other').addEventListener('click',pick);
+
+  file.addEventListener('change',function(){
+    var f=file.files && file.files[0];
+    if(!f) return;
+    shouldResumeAfterUi=false; appPausePending=false;
+    if(url) URL.revokeObjectURL(url);
+    url=URL.createObjectURL(f);
+    $('err').classList.remove('on');
+    v.src=url;
+    v.playbackRate=rate;
+    $('name').textContent=f.name;
+    $('empty').style.display='none';
+    $('stage').classList.add('on');
+    $('bar').classList.add('on');
+    file.value='';
+  });
+
+  v.addEventListener('loadedmetadata',function(){v.playbackRate=rate});
+  v.addEventListener('error',function(){
+    $('err').classList.add('on');
+    $('stage').classList.remove('on');
+    $('bar').classList.add('on');
+  });
+
+  $('speed').addEventListener('click',function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    rate=parseFloat(b.getAttribute('data-r'));
+    v.playbackRate=rate;
+    var all=$('speed').querySelectorAll('button');
+    for(var i=0;i<all.length;i++) all[i].setAttribute('aria-pressed',all[i]===b?'true':'false');
+  });
+  /* ---- Субтитры ---- */
+  var cues=[], offset=0, last=-2, raf=0, frameToken=null;
+  var sub=$('sub'), subtxt=$('subtxt');
+
+  function t(s){
+    var m=/(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})/.exec(s);
+    if(!m) return null;
+    return (+(m[1]||0))*3600+(+m[2])*60+(+m[3])+(+(m[4]+'00').slice(0,3))/1000;
+  }
+
+  function parse(txt){
+    var out=[], blocks=txt.replace(/^\uFEFF/,'').replace(/\r/g,'').split(/\n{2,}/);
+    for(var i=0;i<blocks.length;i++){
+      var lines=blocks[i].split('\n'), k=-1;
+      for(var j=0;j<lines.length;j++){ if(lines[j].indexOf('-->')>-1){k=j;break} }
+      if(k<0) continue;
+      var p=lines[k].split('-->'), a=t(p[0]), b=t(p[1]);
+      if(a===null||b===null) continue;
+      var text=lines.slice(k+1).join('\n').replace(/<[^>]*>/g,'').replace(/\{[^}]*\}/g,'').trim();
+      if(text) out.push({s:a,e:b,t:text});
+    }
+    out.sort(function(x,y){return x.s-y.s});
+    return out;
+  }
+
+  function cur(time){
+    var x=time-offset, lo=0, hi=cues.length-1, f=-1;
+    while(lo<=hi){ var m=(lo+hi)>>1; if(cues[m].s<=x){f=m;lo=m+1}else{hi=m-1} }
+    for(var i=f;i>=0&&i>f-3;i--){ if(x<cues[i].e) return i }
+    return -1;
+  }
+
+  function draw(time){
+    if(!cues.length) return;
+    var current = typeof time==='number' ? time : v.currentTime;
+    var i=cur(current);
+    if(i!==last){ last=i; render(i>=0 ? cues[i].t : ''); }
+  }
+
+  function stopSubtitleLoop(){
+    if(raf) cancelAnimationFrame(raf);
+    raf=0;
+    if(frameToken!==null && typeof v.cancelVideoFrameCallback==='function') v.cancelVideoFrameCallback(frameToken);
+    frameToken=null;
+  }
+
+  function loop(){
+    if(typeof v.requestVideoFrameCallback==='function'){
+      frameToken=v.requestVideoFrameCallback(function(now,meta){
+        draw(meta && typeof meta.mediaTime==='number' ? meta.mediaTime : v.currentTime);
+        if(!v.paused && !v.ended) loop();
+      });
+    }else{
+      draw(v.currentTime);
+      raf=requestAnimationFrame(loop);
+    }
+  }
+
+  v.addEventListener('play',function(){
+    if((card && !card.hidden) || anyInfoPanelOpen()) shouldResumeAfterUi=false;
+    stopSubtitleLoop(); loop();
+  });
+  v.addEventListener('pause',function(){
+    if(appPausePending) appPausePending=false;
+    else shouldResumeAfterUi=false;
+    stopSubtitleLoop(); draw();
+  });
+  v.addEventListener('seeking',function(){ last=-2; draw() });
+  v.addEventListener('seeked',function(){ last=-2; draw() });
+  v.addEventListener('timeupdate',function(){ draw() });
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden) stopSubtitleLoop();
+    else if(!v.paused && !v.ended){ last=-2; stopSubtitleLoop(); loop() }
+    else draw();
+  });
+
+  function showOffset(){ $('off').textContent=(offset>0?'+':'')+offset.toFixed(1)+' с' }
+  function shift(d){ offset=Math.round((offset+d)*10)/10; showOffset(); last=-2; draw() }
+  $('earlier').addEventListener('click',function(){ shift(-0.5) });
+  $('later').addEventListener('click',function(){ shift(0.5) });
+
+  $('hide').addEventListener('click',function(){
+    var off=sub.classList.toggle('off');
+    $('hide').textContent = off ? 'Показать' : 'Скрыть';
+  });
+
+  $('subbtn').addEventListener('click',function(){ $('subfile').click() });
+  $('subfile').addEventListener('change',function(){
+    var f=this.files && this.files[0], inp=this;
+    if(!f) return;
+    f.text().then(function(txt){
+      var c=parse(txt);
+      if(!c.length){
+        $('suberr').textContent='Не нашёл реплик в этом файле. Нужен формат .srt или .vtt.';
+        $('suberr').classList.add('on');
+        return;
+      }
+      $('suberr').classList.remove('on');
+      cues=c; offset=0; last=-2; showOffset();
+      sub.classList.remove('muted');
+      subtxt.textContent='';
+      draw();
+    }).catch(function(){
+      $('suberr').textContent='Не получилось прочитать файл субтитров.';
+      $('suberr').classList.add('on');
+    });
+    inp.value='';
+  });
+
+  file.addEventListener('change',function(){
+    cues=[]; offset=0; last=-2; showOffset();
+    subtxt.textContent='';
+  });
+  /* ---- Полный экран: растягиваем всю сцену, чтобы субтитры остались ---- */
+  var stage=$('stage');
+  function inFs(){ return document.fullscreenElement||document.webkitFullscreenElement }
+  $('fs').addEventListener('click',function(){
+    if(inFs()){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); return; }
+    var req=stage.requestFullscreen||stage.webkitRequestFullscreen;
+    if(!req) return;
+    var p=req.call(stage);
+    var lock=function(){ try{ screen.orientation.lock('landscape').catch(function(){}) }catch(e){} };
+    if(p&&p.then) p.then(lock); else lock();
+  });
+  document.addEventListener('fullscreenchange',function(){
+    if(!inFs()){ try{ screen.orientation.unlock() }catch(e){} }
+  });
+  /* ---- Gemini: ключ и проверка связи ---- */
+  var keyEl=$('key'), modelEl=$('model'), keymsg=$('keymsg');
+  var DEFAULT_MODEL='gemini-3.8-flash';
+  function lsGet(k){ try{ return localStorage.getItem(k) }catch(e){ return null } }
+  function lsSet(k,val){ try{ localStorage.setItem(k,val); return true }catch(e){ return false } }
+  keyEl.value=lsGet('gem_key')||'';
+  modelEl.value=lsGet('gem_model')||DEFAULT_MODEL;
+  var provEl=$('prov'), ckeyEl=$('ckey'), cmodelEl=$('cmodel'), DEFAULT_CMODEL='claude-haiku-5-5';
+  var okeyEl=$('okey'), omodelEl=$('omodel'), DEFAULT_OMODEL='gpt-5.4-nano';
+  okeyEl.value=lsGet('oa_key')||''; omodelEl.value=lsGet('oa_model')||DEFAULT_OMODEL;
+  provEl.value=lsGet('prov')||'openai'; ckeyEl.value=lsGet('cl_key')||''; cmodelEl.value=lsGet('cl_model')||DEFAULT_CMODEL;
+  function say(text,bad){ keymsg.textContent=text; keymsg.className='msg'+(bad?' bad':'') }
+
+  $('keysave').addEventListener('click',function(){
+    var a=lsSet('gem_key',keyEl.value.trim())&lsSet('cl_key',ckeyEl.value.trim())&lsSet('oa_key',okeyEl.value.trim())&lsSet('prov',provEl.value), b=lsSet('gem_model',modelEl.value.trim()||DEFAULT_MODEL)&lsSet('cl_model',cmodelEl.value.trim()||DEFAULT_CMODEL)&lsSet('oa_model',omodelEl.value.trim()||DEFAULT_OMODEL);
+    say(a&&b ? 'Сохранено в этом браузере.' : 'Браузер не дал сохранить. Ключ будет работать, пока страница открыта.', !(a&&b));
+  });
+
+  function askGemini(prompt,asJson){
+    var key=keyEl.value.trim(), model=modelEl.value.trim()||DEFAULT_MODEL;
+    if(!key) return Promise.reject(new Error('Сначала вставь ключ.'));
+    return fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-goog-api-key':key},
+      body:JSON.stringify(asJson ? {contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:'application/json'}} : {contents:[{parts:[{text:prompt}]}]})
+    }).then(function(r){
+      return r.json().catch(function(){return {}}).then(function(j){
+        if(!r.ok){ var er=new Error((j.error&&j.error.message)||('Ошибка '+r.status)); er.status=r.status; throw er; }
+        var c=j.candidates&&j.candidates[0], p=c&&c.content&&c.content.parts;
+        if(!p||!p.length) throw new Error('Gemini вернул пустой ответ.');
+        return p.map(function(x){return x.text||''}).join('').trim();
+      });
+    });
+  }
+  window.askGemini=askGemini;
+
+  $('keytest').addEventListener('click',function(){
+    say('Проверяю…');
+    askAI('Переведи на русский одним словом: hello').then(function(t){
+      say('Работает. Ответ: '+t);
+    }).catch(function(e){
+      say(e instanceof TypeError
+        ? 'Нет связи с ИИ. Если страница открыта внутри Claude, внешние запросы там заблокированы, это нормально. Проверим, когда выложим страницу на свой бесплатный хостинг.'
+        : 'Сбой: '+e.message, true);
+    });
+  });
+  /* ---- Клик по слову ---- */
+  var card=$('card'), curW=null, reqId=0, cache={}, words=[];
+
+  function anyInfoPanelOpen(){ return $('wl').open || $('set').open }
+  function pauseForUi(){
+    if(!v.paused && !v.ended){ shouldResumeAfterUi=true; appPausePending=true; v.pause(); }
+  }
+  function restorePlaybackIfSafe(){
+    if(!shouldResumeAfterUi || !card.hidden || anyInfoPanelOpen()) return;
+    shouldResumeAfterUi=false;
+    var p=v.play(); if(p && p.catch) p.catch(function(){});
+  }
+  $('wl').addEventListener('toggle',function(){ if(this.open) pauseForUi(); else restorePlaybackIfSafe() });
+  $('set').addEventListener('toggle',function(){ if(this.open) pauseForUi(); else restorePlaybackIfSafe() });
+  try{ cache=JSON.parse(lsGet('wcache')||'{}') }catch(e){ cache={} }
+  try{ words=JSON.parse(lsGet('words')||'[]') }catch(e){ words=[] }
+
+  function render(text){
+    subtxt.textContent='';
+    if(!text) return;
+    var re=/[A-Za-z][A-Za-z'’-]*/g, pos=0, m;
+    while((m=re.exec(text))){
+      if(m.index>pos) subtxt.appendChild(document.createTextNode(text.slice(pos,m.index)));
+      var s=document.createElement('span'); s.className='w'; s.textContent=m[0];
+      subtxt.appendChild(s);
+      pos=m.index+m[0].length;
+    }
+    if(pos<text.length) subtxt.appendChild(document.createTextNode(text.slice(pos)));
+  }
+
+  function saveCache(){
+    var ks=Object.keys(cache);
+    if(ks.length>600){ for(var i=0;i<300;i++) delete cache[ks[i]]; }
+    lsSet('wcache',JSON.stringify(cache));
+  }
+
+  function drawWords(){
+    $('wlsum').textContent='Мои слова ('+words.length+')';
+    var box=$('wlist'); box.textContent='';
+    words.forEach(function(w,i){
+      var cached=null;
+      Object.keys(cache).some(function(k){
+        var item=cache[k];
+        if(item && String(item.word||'').toLowerCase()===String(w.word||'').toLowerCase() && (!w.ru || item.ru===w.ru)){ cached=item; return true; }
+        return false;
+      });
+      var full=Object.assign({},cached||{},w);
+      ['meaning','sent','ex_en','ex_ru'].forEach(function(k){ if(!full[k] && cached && cached[k]) full[k]=cached[k] });
+      var d=document.createElement('div'); d.className='wi';
+      var details=document.createElement('details'); details.className='word-detail';
+      var summary=document.createElement('summary'); summary.textContent=(full.word||'')+' — '+(full.ru||'');
+      details.appendChild(summary);
+      var content=document.createElement('div');
+      function addLine(label,value){
+        if(!value) return;
+        var p=document.createElement('p'), strong=document.createElement('strong');
+        strong.textContent=label+' '; p.appendChild(strong); p.appendChild(document.createTextNode(value)); content.appendChild(p);
+      }
+      addLine('Значение:',full.meaning); addLine('Из фильма:',full.sent);
+      addLine('Пример:',full.ex_en); addLine('Перевод примера:',full.ex_ru);
+      if(!full.meaning && !full.sent && !full.ex_en && !full.ex_ru) addLine('Дополнительно:','Для этой старой записи подробности не найдены.');
+      details.appendChild(content);
+      var b=document.createElement('button'); b.textContent='Удалить';
+      b.addEventListener('click',function(){ words.splice(i,1); lsSet('words',JSON.stringify(words)); drawWords() });
+      d.appendChild(details); d.appendChild(b); box.appendChild(d);
+    });
+  }
+  drawWords();
+
+  function showCard(r){
+    $('cw').textContent=r.word||'';
+    $('ct').textContent=r.ru||'';
+    $('ce').textContent=r.meaning||'';
+    $('cs').textContent=r.sent ? 'Из фильма: '+r.sent : '';
+    $('cx').textContent=r.ex_en ? r.ex_en+(r.ex_ru ? '\n'+r.ex_ru : '') : '';
+    var saved=words.some(function(w){ return w.word===r.word });
+    var b=$('csave'); b.style.display=''; b.disabled=saved;
+    b.textContent=saved ? 'Сохранено' : 'Сохранить слово';
+  }
+
+  function lookup(word,sent){
+    var id=++reqId, key=word.toLowerCase()+'|'+sent;
+    pauseForUi();
+    curW=null;
+    $('cw').textContent=word; $('ct').textContent='Перевожу…';
+    $('ce').textContent=''; $('cs').textContent=''; $('cx').textContent='';
+    $('csave').style.display='none';
+    card.hidden=false;
+    if(cache[key]){ curW=cache[key]; showCard(curW); return; }
+    var prompt='Ты помощник для изучающего английский, родной язык русский. Фраза из фильма: '+JSON.stringify(sent)+'. Слово: '+JSON.stringify(word)+'. Ответь только JSON с полями: "word" (слово в начальной форме), "ru" (перевод именно в этой фразе, 1-3 слова), "meaning" (одно короткое предложение по-русски: в каком значении слово здесь), "ex_en" (простой пример на английском в этом же значении), "ex_ru" (перевод примера).';
+    askAI(prompt,true).then(function(t){
+      var r=JSON.parse(t.replace(/^```(?:json)?|```$/g,'').trim());
+      r.sent=sent;
+      cache[key]=r; saveCache();
+      if(id!==reqId) return;
+      curW=r; showCard(r);
+    }).catch(function(e){
+      if(id!==reqId) return;
+      $('ct').textContent = e instanceof TypeError ? 'Нет связи. Проверь интернет.'
+        : e instanceof SyntaxError ? 'ИИ ответил не по формату. Нажми на слово ещё раз.'
+        : (e.message || 'Не получилось перевести.');
+    });
+  }
+
+  sub.addEventListener('click',function(e){
+    var w=e.target.closest && e.target.closest('.w');
+    if(!w) return;
+    var sent = (last>=0 && cues[last]) ? cues[last].t.replace(/\s+/g,' ') : w.textContent;
+    lookup(w.textContent,sent);
+  });
+
+  $('csave').addEventListener('click',function(){
+    if(!curW) return;
+    words.unshift(Object.assign({},curW));
+    lsSet('words',JSON.stringify(words));
+    drawWords(); showCard(curW);
+  });
+
+  $('cclose').addEventListener('click',function(){
+    reqId++; card.hidden=true;
+    restorePlaybackIfSafe();
+  });
+  /* ---- Claude и повтор при перегрузке ---- */
+  function askClaude(prompt,asJson){
+    var key=ckeyEl.value.trim(), model=cmodelEl.value.trim()||DEFAULT_CMODEL;
+    if(!key) return Promise.reject(new Error('Сначала вставь ключ Claude в настройках.'));
+    var text = asJson ? prompt+'\nОтветь только JSON, без пояснений и без markdown.' : prompt;
+    return fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:model,max_tokens:600,messages:[{role:'user',content:text}]})
+    }).then(function(r){
+      return r.json().catch(function(){return {}}).then(function(j){
+        if(!r.ok){ var e=new Error((j.error&&j.error.message)||('Ошибка '+r.status)); e.status=r.status; throw e; }
+        var c=(j.content||[]).filter(function(x){return x.type==='text'}).map(function(x){return x.text}).join('');
+        if(!c) throw new Error('Claude вернул пустой ответ.');
+        return c.trim();
+      });
+    });
+  }
+
+  function askOpenAI(prompt,asJson){
+    var key=okeyEl.value.trim(), model=omodelEl.value.trim()||DEFAULT_OMODEL;
+    if(!key) return Promise.reject(new Error('Сначала вставь ключ OpenAI в настройках.'));
+    var body={model:model,max_completion_tokens:1500,reasoning_effort:'low',messages:[{role:'user',content:prompt}]};
+    if(asJson) body.response_format={type:'json_object'};
+    return fetch('https://api.openai.com/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify(body)
+    }).then(function(r){
+      return r.json().catch(function(){return {}}).then(function(j){
+        if(!r.ok){ var e=new Error((j.error&&j.error.message)||('Ошибка '+r.status)); e.status=r.status; throw e; }
+        var c=j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content;
+        if(!c) throw new Error('GPT вернул пустой ответ.');
+        return c.trim();
+      });
+    });
+  }
+
+  function pickProvider(){
+    var has={openai:!!okeyEl.value.trim(), claude:!!ckeyEl.value.trim(), gemini:!!keyEl.value.trim()};
+    var p=provEl.value;
+    if(has[p]) return p;
+    return ['openai','claude','gemini'].filter(function(x){return has[x]})[0] || p;
+  }
+
+  function askAI(prompt,asJson,n){
+    n=n||0;
+    var pv=pickProvider();
+    var f = pv==='openai' ? askOpenAI : pv==='claude' ? askClaude : askGemini;
+    return f(prompt,asJson).catch(function(e){
+      var busy = e.status===429 || e.status===503 || e.status===529 || /demand|overload|unavailable/i.test(e.message||'');
+      if(busy && n<2) return new Promise(function(res){ setTimeout(res,1500*(n+1)) }).then(function(){ return askAI(prompt,asJson,n+1) });
+      throw e;
+    });
+  }
+})();
+</script>
+</body>
+</html>
